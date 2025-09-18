@@ -14,6 +14,9 @@ class AdvancedNotificationSystem {
             autoMarkRead: false,
             maxNotifications: 50
         };
+        // Buffer de deduplicação (título+mensagem) com TTL
+        this._recent = new Map();
+        this._dedupWindowMs = 3000;
         this.isInitialized = false;
         this.init();
     }
