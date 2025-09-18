@@ -1,4 +1,4 @@
-// Sistema de Notificações Avançado - Versão Melhorada e Corrigida
+// Sistema de Notificações Avan��ado - Versão Melhorada e Corrigida
 
 class AdvancedNotificationSystem {
     constructor() {
@@ -14,6 +14,9 @@ class AdvancedNotificationSystem {
             autoMarkRead: false,
             maxNotifications: 50
         };
+        // Buffer de deduplicação (título+mensagem) com TTL
+        this._recent = new Map();
+        this._dedupWindowMs = 3000;
         this.isInitialized = false;
         this.init();
     }
@@ -264,40 +267,48 @@ class AdvancedNotificationSystem {
 
     showNotification(options) {
         try {
+            const now = Date.now();
+            const type = options.type || 'info';
+            const title = options.title || 'Notificação';
+            const message = options.message || '';
+            const dedupKey = `${type}|${title}|${message}`;
+
+            // Suprimir duplicatas dentro da janela de tempo
+            const last = this._recent.get(dedupKey);
+            if (last && (now - last) < this._dedupWindowMs) {
+                return null;
+            }
+            this._recent.set(dedupKey, now);
+            // Limpar chaves antigas
+            for (const [k, t] of Array.from(this._recent.entries())) {
+                if (now - t > this._dedupWindowMs) this._recent.delete(k);
+            }
+
             const notification = {
                 id: this.generateId(),
-                type: options.type || 'info',
-                title: options.title || 'Notificação',
-                message: options.message || '',
+                type,
+                title,
+                message,
                 timestamp: new Date(),
                 read: false,
                 data: options.data || {},
                 duration: options.duration || 5000
             };
 
-            // Adicionar à lista
             this.notifications.unshift(notification);
 
-            // Limitar número de notificações
             if (this.notifications.length > this.settings.maxNotifications) {
                 this.notifications = this.notifications.slice(0, this.settings.maxNotifications);
             }
 
-            // Mostrar toast
             this.showToast(notification);
-
-            // Atualizar painel
             this.updateNotificationPanel();
-
-            // Atualizar contador
             this.updateNotificationBadge();
 
-            // Tocar som se habilitado
             if (options.sound && this.settings.soundEnabled) {
                 this.playNotificationSound();
             }
 
-            // Salvar no localStorage
             this.saveNotifications();
 
             return notification;

@@ -52,7 +52,7 @@ def json_response(data, status_code=200):
     return response
 
 def verificar_ou_criar_agente(usuario):
-    """Verifica se o usuário é um agente ou cria um se necessário"""
+    """Verifica se o usuário é um agente ou cria um se necess��rio"""
     agente = AgenteSuporte.query.filter_by(usuario_id=usuario.id, ativo=True).first()
     if not agente:
         # Verificar se é administrador ou tem acesso ao TI
@@ -1861,7 +1861,7 @@ def listar_problemas():
             db.session.execute(db.text('SELECT 1'))
             db.session.commit()
         except Exception as conn_error:
-            logger.warning(f"Banco de dados não disponível: {str(conn_error)}")
+            logger.warning(f"Banco de dados não dispon��vel: {str(conn_error)}")
             # Retornar lista vazia em vez de erro para permitir que a interface funcione
             return json_response([])
 
@@ -2150,18 +2150,29 @@ def remover_unidade(id):
 @setor_required('ti')
 def listar_chamados():
     try:
-        logger.debug("Iniciando consulta de chamados (otimizada)...")
+        logger.debug("Iniciando consulta de chamados (otimizada e paginável)...")
         from database import ChamadoAgente, AgenteSuporte, User
         from sqlalchemy.orm import selectinload
 
-        # Carregar chamados com anexos via selectinload (evita N+1)
-        chamados = (
-            Chamado.query.options(selectinload(Chamado.anexos))
-            .order_by(Chamado.data_abertura.desc())
-            .all()
-        )
+        # Parâmetros de otimização
+        status_param = (request.args.get('status') or '').strip()
+        limit = request.args.get('limit', type=int) or 200
+        limit = max(5, min(limit, 1000))
+        light = (request.args.get('light', '1').lower() in ['1', 'true', 'yes'])
 
-        logger.debug(f"Total de chamados encontrados: {len(chamados)}")
+        # Query base
+        query = Chamado.query
+        if status_param in ['Aberto', 'Aguardando', 'Concluido', 'Cancelado']:
+            query = query.filter(Chamado.status == status_param)
+
+        # Evitar carregar relacionamentos pesados quando em modo "light"
+        if not light:
+            query = query.options(selectinload(Chamado.anexos))
+
+        query = query.order_by(Chamado.data_abertura.desc()).limit(limit)
+        chamados = query.all()
+
+        logger.debug(f"Total de chamados encontrados: {len(chamados)} | status={status_param or 'todos'} | limit={limit} | light={light}")
 
         # Pré-buscar agente atribuído para todos os chamados em UMA query
         ids = [c.id for c in chamados]
@@ -2195,49 +2206,43 @@ def listar_chamados():
                 # Buscar agente atribuído (via mapa pré-carregado)
                 agente_info = agentes_map.get(c.id)
 
-                anexos_payload = []
-                try:
-                    for a in getattr(c, 'anexos', []) or []:
-                        anexos_payload.append({
-                            'id': a.id,
-                            'nome': a.nome_original,
-                            'url': a.url_publica() if hasattr(a, 'url_publica') else ('/' + a.caminho_arquivo if a.caminho_arquivo else None),
-                            'tamanho_kb': round((a.tamanho_bytes or 0) / 1024)
-                        })
-                except Exception:
-                    anexos_payload = []
-
                 chamado_data = {
                     'id': c.id,
-                    'codigo': c.codigo if hasattr(c, 'codigo') else None,
-                    'protocolo': c.protocolo if hasattr(c, 'protocolo') else None,
-                    'solicitante': c.solicitante if hasattr(c, 'solicitante') else None,
-                    'email': c.email if hasattr(c, 'email') else None,
-                    'cargo': c.cargo if hasattr(c, 'cargo') else None,
-                    'telefone': c.telefone if hasattr(c, 'telefone') else None,
-                    'unidade': c.unidade if hasattr(c, 'unidade') else None,
-                    'problema': c.problema if hasattr(c, 'problema') else None,
-                    'descricao': c.descricao if hasattr(c, 'descricao') else None,
-                    'internet_item': c.internet_item if hasattr(c, 'internet_item') else None,
+                    'codigo': getattr(c, 'codigo', None),
+                    'protocolo': getattr(c, 'protocolo', None),
+                    'solicitante': getattr(c, 'solicitante', None),
+                    'email': getattr(c, 'email', None),
+                    'cargo': getattr(c, 'cargo', None),
+                    'telefone': getattr(c, 'telefone', None),
+                    'unidade': getattr(c, 'unidade', None),
+                    'problema': getattr(c, 'problema', None),
+                    'internet_item': getattr(c, 'internet_item', None),
                     'data_visita': data_visita_str,
                     'data_abertura': data_abertura_str,
-                    'status': c.status if hasattr(c, 'status') else 'Aberto',
-                    'prioridade': c.prioridade if hasattr(c, 'prioridade') else 'Normal',
-                    'visita_tecnica': c.visita_tecnica if hasattr(c, 'visita_tecnica') else False,
+                    'status': getattr(c, 'status', 'Aberto'),
+                    'prioridade': getattr(c, 'prioridade', 'Normal'),
+                    'visita_tecnica': getattr(c, 'visita_tecnica', False),
                     'agente': agente_info,
-                    'agente_id': agente_info['id'] if agente_info else None,
-                    'anexos': anexos_payload,
-                    'historico': {
-                        'assumido_por_nome': f"{c.status_assumido_por.nome} {c.status_assumido_por.sobrenome}" if getattr(c, 'status_assumido_por', None) else None,
-                        'assumido_em': c.status_assumido_em.strftime('%d/%m/%Y %H:%M') if getattr(c, 'status_assumido_em', None) else None,
-                        'concluido_por_nome': f"{c.concluido_por.nome} {c.concluido_por.sobrenome}" if getattr(c, 'concluido_por', None) else None,
-                        'concluido_em': c.concluido_em.strftime('%d/%m/%Y %H:%M') if getattr(c, 'concluido_em', None) else None,
-                        'cancelado_por_nome': f"{c.cancelado_por.nome} {c.cancelado_por.sobrenome}" if getattr(c, 'cancelado_por', None) else None,
-                        'cancelado_em': c.cancelado_em.strftime('%d/%m/%Y %H:%M') if getattr(c, 'cancelado_em', None) else None
-                    }
+                    'agente_id': agente_info['id'] if agente_info else None
                 }
+
+                # Campos pesados apenas quando não estiver no modo "light"
+                if not light:
+                    anexos_payload = []
+                    try:
+                        for a in getattr(c, 'anexos', []) or []:
+                            anexos_payload.append({
+                                'id': a.id,
+                                'nome': a.nome_original,
+                                'url': a.url_publica() if hasattr(a, 'url_publica') else ('/' + a.caminho_arquivo if a.caminho_arquivo else None),
+                                'tamanho_kb': round((a.tamanho_bytes or 0) / 1024)
+                            })
+                    except Exception:
+                        anexos_payload = []
+                    chamado_data['anexos'] = anexos_payload
+                    chamado_data['descricao'] = getattr(c, 'descricao', None)
+
                 chamados_list.append(chamado_data)
-                logger.debug(f"Chamado {c.id} formatado com sucesso")
             except Exception as e:
                 logger.error(f"Erro ao formatar chamado {c.id}: {str(e)}")
                 continue

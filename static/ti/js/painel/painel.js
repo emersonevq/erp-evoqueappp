@@ -377,17 +377,29 @@ const pagination = document.getElementById('pagination');
 // Fun��ão para carregar os chamados da API
 async function loadChamados() {
     try {
-        const response = await fetch('/ti/painel/api/chamados', {
+        // Mostrar estado de carregamento
+        if (chamadosGrid) {
+            chamadosGrid.innerHTML = '<div class="text-center py-4" style="grid-column: 1 / -1;"><div class="spinner-border text-primary" role="status"></div><div class="mt-2">Carregando chamados...</div></div>';
+        }
+
+        // Montar URL com parâmetros de performance: light e limit
+        const url = new URL('/ti/painel/api/chamados', window.location.origin);
+        url.searchParams.set('light', '1');
+        url.searchParams.set('limit', '200');
+        if (currentFilter && currentFilter !== 'all') {
+            url.searchParams.set('status', currentFilter);
+        }
+
+        const response = await fetch(url.toString(), {
             credentials: 'same-origin',
-            headers: {
-                'Accept': 'application/json'
-            }
+            headers: { 'Accept': 'application/json' }
         });
         if (!response.ok) {
             throw new Error(`Erro ao carregar chamados: ${response.status} ${response.statusText}`);
         }
 
         chamadosData = await response.json();
+        currentPage = 1;
         renderChamadosPage(currentPage);
 
         // Atualizar contadores da visão geral
@@ -397,8 +409,9 @@ async function loadChamados() {
         popularFiltrosDinamicos();
     } catch (error) {
         console.error('Erro ao carregar chamados:', error);
-        chamadosGrid.innerHTML = '<p class="text-center py-4">Erro ao carregar chamados. Tente novamente mais tarde.</p>';
-        // Usar sistema de notificações avançado
+        if (chamadosGrid) {
+            chamadosGrid.innerHTML = '<p class="text-center py-4" style="grid-column: 1 / -1;">Erro ao carregar chamados. Tente novamente mais tarde.</p>';
+        }
         if (window.advancedNotificationSystem) {
             window.advancedNotificationSystem.showError('Erro', 'Erro ao carregar chamados');
         }
@@ -707,12 +720,15 @@ function renderChamadosPage(page) {
         return;
     }
 
+    // Montar conteúdo em lote para minimizar reflows
+    const fragment = document.createDocumentFragment();
+
     pageChamados.forEach(chamado => {
         const card = document.createElement('div');
         card.className = 'chamado-card';
         card.tabIndex = 0;
 
-        const statusClass = chamado.status.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        const statusClass = (chamado.status || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         const statusIcon = {
             'aberto': 'fa-circle-notch',
             'aguardando': 'fa-clock',
@@ -720,7 +736,7 @@ function renderChamadosPage(page) {
             'cancelado': 'fa-times-circle'
         }[statusClass] || 'fa-circle';
 
-card.innerHTML = `
+        card.innerHTML = `
     <div class="card-header">
         <h3>${chamado.codigo}</h3>
         <div class="status-badge status-${statusClass}">
@@ -731,15 +747,15 @@ card.innerHTML = `
     <div class="card-body">
         <div class="info-row">
             <strong>Solicitante:</strong>
-            <span>${chamado.solicitante}</span>
+            <span>${chamado.solicitante || ''}</span>
         </div>
         <div class="info-row">
             <strong>Problema:</strong>
-            <span>${chamado.problema}</span>
+            <span>${chamado.problema || ''}</span>
         </div>
         <div class="info-row">
             <strong>Unidade:</strong>
-            <span>${chamado.unidade}</span>
+            <span>${chamado.unidade || ''}</span>
         </div>
         <div class="info-row">
             <strong>Data:</strong>
@@ -749,11 +765,11 @@ card.innerHTML = `
             <strong>Agente:</strong>
             ${chamado.agente ? `
                 <span class="badge bg-info">${chamado.agente.nome}</span>
-                <button class="btn btn-sm btn-outline-warning ms-2" onclick="alterarAgente(${chamado.id})" title="Alterar agente">
+                <button class="btn btn-sm btn-outline-warning ms-2" data-action="alterar-agente" data-id="${chamado.id}" title="Alterar agente">
                     <i class="fas fa-user-edit"></i>
                 </button>
             ` : `
-                <button class="btn btn-sm btn-success" onclick="atribuirAgente(${chamado.id})" title="Atribuir agente">
+                <button class="btn btn-sm btn-success" data-action="atribuir-agente" data-id="${chamado.id}" title="Atribuir agente">
                     <i class="fas fa-user-plus"></i> Atribuir
                 </button>
             `}
@@ -775,18 +791,19 @@ card.innerHTML = `
         <button class="btn btn-ticket-sm" data-id="${chamado.id}" title="Enviar ticket">
             <i class="fas fa-envelope"></i> Ticket
         </button>
-    </div>
-        `;
+    </div>`;
 
-        // Abrir modal ao clicar no card (exceto nos elementos interativos)
+        // Clique no card abre modal (exceto elementos interativos)
         card.addEventListener('click', function(e) {
-            if (!e.target.closest('.card-footer') && !e.target.closest('.status-badge')) {
+            if (!e.target.closest('.card-footer') && !e.target.closest('.status-badge') && !e.target.closest('button')) {
                 openModal(chamado);
             }
         });
 
-        chamadosGrid.appendChild(card);
+        fragment.appendChild(card);
     });
+
+    chamadosGrid.appendChild(fragment);
 
     renderPagination(filteredChamados.length);
     attachCardEventListeners();
@@ -852,23 +869,21 @@ function renderPagination(totalItems) {
 }
 
 // Função para anexar event listeners aos cards de chamados
+let chamadosHandlersBound = false;
 function attachCardEventListeners() {
-    // Listener para mudan��a no select de status dos chamados (apenas selects de status específicos)
-    document.querySelectorAll('select[id^="status-"]:not(#filtroPrioridade):not(#filtroAgenteResponsavel):not(#filtroUnidade)').forEach(select => {
-        select.addEventListener('click', function(e) {
-            e.stopPropagation();
-        });
+    if (chamadosHandlersBound) return;
+    chamadosHandlersBound = true;
 
-        select.addEventListener('change', async function(e) {
+    // Delegar mudança de status
+    chamadosGrid.addEventListener('change', async function(e) {
+        const el = e.target;
+        if (el && el.matches('select[id^="status-"]')) {
             e.stopPropagation();
-            const chamadoId = this.id.replace('status-', '');
-            const novoStatus = this.value;
-            
+            const chamadoId = el.id.replace('status-', '');
+            const novoStatus = el.value;
             try {
                 await updateChamadoStatus(chamadoId, novoStatus);
-                const mensagem = `Status atualizado para "${novoStatus}"${novoStatus === 'Aguardando' || novoStatus === 'Cancelado' || novoStatus === 'Concluido' ? '. E-mail enviado ao solicitante.' : ''}`;
-                
-                // Usar sistema de notificações avançado
+                const mensagem = `Status atualizado para "${novoStatus}"${['Aguardando','Cancelado','Concluido'].includes(novoStatus) ? '. E-mail enviado ao solicitante.' : ''}`;
                 if (window.advancedNotificationSystem) {
                     window.advancedNotificationSystem.showSuccess('Status Atualizado', mensagem);
                 }
@@ -877,67 +892,59 @@ function attachCardEventListeners() {
                     window.advancedNotificationSystem.showError('Erro', error.message);
                 }
                 const chamado = chamadosData.find(c => c.id == chamadoId);
-                if (chamado) {
-                    this.value = chamado.status;
-                }
+                if (chamado) el.value = chamado.status;
             }
-        });
-    });
-
-    // Listener para botão Atualizar
-    document.querySelectorAll('.btn-update-sm').forEach(btn => {
-        btn.addEventListener('click', async function(e) {
-            e.stopPropagation();
-            const chamadoId = this.dataset.id;
-            const statusSelect = document.getElementById(`status-${chamadoId}`);
-            const novoStatus = statusSelect.value;
-            
-            try {
-                await updateChamadoStatus(chamadoId, novoStatus);
-                const mensagem = `Status atualizado para "${novoStatus}"${novoStatus === 'Aguardando' || novoStatus === 'Cancelado' || novoStatus === 'Concluido' ? '. E-mail enviado ao solicitante.' : ''}`;
-                
-                // Usar sistema de notificações avançado
-                if (window.advancedNotificationSystem) {
-                    window.advancedNotificationSystem.showSuccess('Status Atualizado', mensagem);
-                }
-                renderChamadosPage(currentPage); // Atualiza a visualizaç��o
-            } catch (error) {
-                if (window.advancedNotificationSystem) {
-                    window.advancedNotificationSystem.showError('Erro', error.message);
-                }
-                const chamado = chamadosData.find(c => c.id == chamadoId);
-                if (chamado) {
-                    statusSelect.value = chamado.status;
-                }
-            }
-        });
-    });
-
-    // Listener para botão Excluir
-    document.querySelectorAll('.btn-danger-sm').forEach(btn => {
-        btn.addEventListener('click', async function(e) {
-            e.stopPropagation();
-            const chamadoId = this.dataset.id;
-            await excluirChamado(chamadoId);
-        });
-    });
-
-    // Listener para botão Enviar Ticket
-    document.querySelectorAll('.btn-ticket-sm').forEach(btn => {
-        btn.addEventListener('click', e => {
-            e.stopPropagation();
-            const id = btn.dataset.id;
-            
-    const chamado = chamadosData.find(c => c.id == id);
-    if (chamado) {
-        openTicketModal(chamado);
-    } else {
-        if (window.advancedNotificationSystem) {
-            window.advancedNotificationSystem.showError('Erro', 'Chamado não encontrado.');
         }
-    }
-    ;
-        });
+    });
+
+    // Delegar cliques em botões
+    chamadosGrid.addEventListener('click', async function(e) {
+        const btn = e.target.closest('.btn-update-sm, .btn-danger-sm, .btn-ticket-sm, [data-action="atribuir-agente"], [data-action="alterar-agente"]');
+        if (!btn) return;
+        e.stopPropagation();
+        const chamadoId = btn.dataset.id;
+
+        if (btn.classList.contains('btn-update-sm')) {
+            const statusSelect = document.getElementById(`status-${chamadoId}`);
+            const novoStatus = statusSelect ? statusSelect.value : null;
+            try {
+                await updateChamadoStatus(chamadoId, novoStatus);
+                const mensagem = `Status atualizado para "${novoStatus}"${['Aguardando','Cancelado','Concluido'].includes(novoStatus) ? '. E-mail enviado ao solicitante.' : ''}`;
+                if (window.advancedNotificationSystem) {
+                    window.advancedNotificationSystem.showSuccess('Status Atualizado', mensagem);
+                }
+                renderChamadosPage(currentPage);
+            } catch (error) {
+                if (window.advancedNotificationSystem) {
+                    window.advancedNotificationSystem.showError('Erro', error.message);
+                }
+            }
+            return;
+        }
+
+        if (btn.classList.contains('btn-danger-sm')) {
+            await excluirChamado(chamadoId);
+            return;
+        }
+
+        if (btn.classList.contains('btn-ticket-sm')) {
+            const chamado = chamadosData.find(c => c.id == chamadoId);
+            if (chamado) {
+                openTicketModal(chamado);
+            } else if (window.advancedNotificationSystem) {
+                window.advancedNotificationSystem.showError('Erro', 'Chamado não encontrado.');
+            }
+            return;
+        }
+
+        if (btn.dataset.action === 'atribuir-agente') {
+            if (typeof atribuirAgente === 'function') atribuirAgente(chamadoId);
+            return;
+        }
+        if (btn.dataset.action === 'alterar-agente') {
+            if (typeof alterarAgente === 'function') alterarAgente(chamadoId);
+            return;
+        }
     });
 }
 
@@ -952,18 +959,15 @@ function initializeSubmenuListeners() {
 
             currentFilter = status;
             currentPage = 1;
-            renderChamadosPage(currentPage);
+            // Recarregar do servidor já filtrado por status para reduzir carga
+            loadChamados();
             activateSection('gerenciar-chamados');
 
             // Atualizar o item ativo no menu
-            document.querySelectorAll('.sidebar a.active').forEach(item => {
-                item.classList.remove('active');
-            });
+            document.querySelectorAll('.sidebar a.active').forEach(item => item.classList.remove('active'));
             this.classList.add('active');
             const parentSubmenuToggle = this.closest('.submenu').previousElementSibling;
-            if (parentSubmenuToggle) {
-                parentSubmenuToggle.classList.add('active');
-            }
+            if (parentSubmenuToggle) parentSubmenuToggle.classList.add('active');
         });
     });
 }
@@ -1742,7 +1746,7 @@ function renderUsuariosPage(page) {
     attachUsuariosEventListeners();
 }
 
-// Função para renderizar a paginação de usuários
+// Funç��o para renderizar a paginação de usuários
 function renderUsuariosPagination(totalItems) {
     usuariosPagination.innerHTML = '';
     const totalPages = Math.ceil(totalItems / usuariosPerPage);
