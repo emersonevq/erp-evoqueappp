@@ -2732,11 +2732,16 @@ document.querySelectorAll('.modal').forEach(modal => {
 
 // Configuração do Socket.IO
 let socket = null;
+let painelSocketInitialized = false;
 
 function initializeSocketIO() {
     try {
+        if (painelSocketInitialized && socket) {
+            console.log('Socket.IO do painel já inicializado, ignorando nova inicialização');
+            return;
+        }
         console.log('Inicializando Socket.IO...');
-        
+
         socket = io({
             transports: ['websocket', 'polling'],
             timeout: 20000,
@@ -2786,19 +2791,12 @@ function initializeSocketIO() {
         // Event listeners para notificações
         socket.on('notification_test', function(data) {
             console.log('Teste de notificação recebido:', data);
-            if (window.advancedNotificationSystem) {
-                window.advancedNotificationSystem.showInfo('Teste Socket.IO', data.message);
-            }
+            // Notificação visual já é tratada em notificacoes.js
         });
 
         socket.on('status_atualizado', function(data) {
             console.log('Status de chamado atualizado:', data);
-            if (window.advancedNotificationSystem) {
-                window.advancedNotificationSystem.showInfo(
-                    'Status Atualizado',
-                    `Chamado ${data.codigo} alterado para ${data.novo_status}`
-                );
-            }
+            // Notificação visual já é tratada em notificacoes.js
             // Recarregar dados se necessário
             if (document.getElementById('gerenciar-chamados').classList.contains('active')) {
                 loadChamados();
@@ -2807,12 +2805,7 @@ function initializeSocketIO() {
 
         socket.on('chamado_deletado', function(data) {
             console.log('Chamado deletado:', data);
-            if (window.advancedNotificationSystem) {
-                window.advancedNotificationSystem.showWarning(
-                    'Chamado Excluído',
-                    `Chamado ${data.codigo} foi exclu��do`
-                );
-            }
+            // Notificação visual já é tratada em notificacoes.js
             // Recarregar dados se necessário
             if (document.getElementById('gerenciar-chamados').classList.contains('active')) {
                 loadChamados();
@@ -2821,12 +2814,7 @@ function initializeSocketIO() {
 
         socket.on('usuario_criado', function(data) {
             console.log('Usuário criado:', data);
-            if (window.advancedNotificationSystem) {
-                window.advancedNotificationSystem.showSuccess(
-                    'Novo Usuário',
-                    `Usuário ${data.nome} ${data.sobrenome} foi criado`
-                );
-            }
+            // Notificação visual já é tratada em notificacoes.js
         });
 
         socket.on('chamado_atribuido', function(data) {
@@ -2869,9 +2857,10 @@ function initializeSocketIO() {
 
         // Disponibilizar socket globalmente
         window.socket = socket;
-        
+        painelSocketInitialized = true;
+
         console.log('Socket.IO inicializado com sucesso');
-        
+
     } catch (error) {
         console.error('Erro ao inicializar Socket.IO:', error);
         updateSocketStatus('Erro de Inicialização', 'danger');
@@ -4908,7 +4897,7 @@ async function confirmarAtribuicao(chamadoId) {
 
         fecharModalAgente();
 
-        // Recarregar chamados para mostrar a atribui��ão
+        // Recarregar chamados para mostrar a atribui����ão
         await loadChamados();
 
     } catch (error) {
