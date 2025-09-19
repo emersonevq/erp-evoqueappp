@@ -14,7 +14,7 @@ from setores.marketing.routes import marketing
 from setores.produtos.routes import produtos
 from setores.comercial.routes import comercial
 from setores.outros.routes import outros_bp
-from flask_login import LoginManager, login_required
+from flask_login import LoginManager, login_required, current_user
 from datetime import timedelta, datetime
 from flask_socketio import SocketIO, emit
 import json
