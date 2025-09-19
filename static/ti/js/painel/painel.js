@@ -327,7 +327,7 @@ window.testNavigationTo = function(sectionId) {
     // Verificar se a seção existe
     const targetSection = document.getElementById(sectionId);
     if (!targetSection) {
-        console.error(`Seção "${sectionId}" não encontrada!`);
+        console.error(`Seç��o "${sectionId}" não encontrada!`);
         return false;
     }
 
@@ -1008,9 +1008,15 @@ async function openModal(chamado) {
     modalData.textContent = chamado.data_abertura.split(' ')[0];
     modalStatusSelect.value = chamado.status;
 
-    // Histórico na aba: usar eventos do backend, ordenar e evitar duplicação
+    // Mostrar o modal imediatamente para feedback rápido
+    modal.classList.add('active');
+
+    // Histórico na aba: carregar de forma assíncrona
     const timelineList = document.getElementById('timelineList');
     if (timelineList) {
+        // placeholder de carregamento
+        timelineList.innerHTML = '<li><i class="fas fa-spinner fa-spin history-icon"></i><span>Carregando histórico...</span></li>';
+
         const items = [];
 
         function fileNameFrom(url, nome) {
@@ -1071,21 +1077,21 @@ async function openModal(chamado) {
 
         // Fallback simples caso a API não retorne eventos
         if (items.length === 0) {
-            if (chamado.data_abertura) items.push(`<li><i class="fas fa-plus-circle history-icon"></i><span>Chamado aberto - ${chamado.data_abertura}</span></li>`);
+            const fallback = [];
+            if (chamado.data_abertura) fallback.push(`<li><i class=\"fas fa-plus-circle history-icon\"></i><span>Chamado aberto - ${chamado.data_abertura}</span></li>`);
             if (Array.isArray(chamado.anexos)) {
                 chamado.anexos.forEach(ax => {
                     const size = ax.tamanho_kb ? ` (${ax.tamanho_kb} KB)` : '';
-                    items.push(`<li><i class="fas fa-paperclip history-icon"></i><span>Anexo do solicitante: <a href="${ax.url}" target="_blank" rel="noopener">${ax.nome || fileNameFrom(ax.url)}</a>${size}</span></li>`);
+                    fallback.push(`<li><i class=\"fas fa-paperclip history-icon\"></i><span>Anexo do solicitante: <a href=\"${ax.url}\" target=\"_blank\" rel=\"noopener\">${ax.nome || fileNameFrom(ax.url)}</a>${size}</span></li>`);
                 });
             }
+            timelineList.innerHTML = fallback.join('');
+        } else {
+            timelineList.innerHTML = items.join('');
         }
-
-        timelineList.innerHTML = items.join('');
     }
 
     // Tabs: utilizar Bootstrap (data-bs-toggle). Nenhuma ação extra necessária aqui.
-
-    modal.classList.add('active');
 }
 
 function closeModal() {
