@@ -93,14 +93,27 @@ ticketModelo.addEventListener('change', function() {
     }
 });
 
-btnEnviarTicket.addEventListener('click', async function() {
+let isSendingTicket = false;
+
+btnEnviarTicket.addEventListener('click', async function(e) {
+    e.preventDefault();
+    if (isSendingTicket) return;
+
     const chamadoId = ticketChamadoId.value;
-    
     if (!ticketAssunto.value.trim() || !ticketMensagem.value.trim()) {
         alert('Por favor, preencha todos os campos obrigatórios.');
         return;
     }
-    
+
+    // Guardar e alterar estado do botão
+    const originalHtml = btnEnviarTicket.innerHTML;
+    isSendingTicket = true;
+    btnEnviarTicket.disabled = true;
+    btnEnviarTicket.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enviando...';
+
+    // Fechar modal imediatamente para evitar cliques duplicados
+    closeTicketModal();
+
     try {
         const formData = new FormData();
         formData.append('assunto', ticketAssunto.value);
@@ -123,27 +136,36 @@ btnEnviarTicket.addEventListener('click', async function() {
             throw new Error(error.error || 'Erro ao enviar ticket');
         }
 
-        const data = await response.json();
-        alert('Ticket enviado com sucesso!');
-        closeTicketModal();
+        if (window.advancedNotificationSystem) {
+            window.advancedNotificationSystem.showSuccess('Ticket Enviado', 'Ticket enviado com sucesso!');
+        } else {
+            alert('Ticket enviado com sucesso!');
+        }
 
         // Recarregar timeline do chamado no modal, se estiver aberto
         try {
             const ch = chamadosData.find(c => c.id == chamadoId);
             if (ch) {
                 openModal(ch);
-                // Trocar para a aba Histórico
                 const historicoTabBtn = document.querySelector('#tab-historico');
-                if (historicoTabBtn) {
+                if (historicoTabBtn && window.bootstrap?.Tab) {
                     const tab = new bootstrap.Tab(historicoTabBtn);
                     tab.show();
                 }
             }
-        } catch (e) { /* ignore */ }
+        } catch (_) {}
 
     } catch (error) {
         console.error('Erro ao enviar ticket:', error);
-        alert(`Erro ao enviar ticket: ${error.message}`);
+        if (window.advancedNotificationSystem) {
+            window.advancedNotificationSystem.showError('Erro', error.message || 'Erro ao enviar ticket');
+        } else {
+            alert(`Erro ao enviar ticket: ${error.message}`);
+        }
+    } finally {
+        isSendingTicket = false;
+        btnEnviarTicket.disabled = false;
+        btnEnviarTicket.innerHTML = originalHtml;
     }
 });
 
