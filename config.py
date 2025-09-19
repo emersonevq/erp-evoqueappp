@@ -119,25 +119,29 @@ class DevelopmentMySQLConfig:
     FLASK_ENV = os.environ.get('FLASK_ENV', 'development')
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-key-change-in-production'
 
-    # Configurações do banco de dados MySQL Azure
-    DB_HOST = os.environ.get('DB_HOST', 'evoque-database.mysql.database.azure.com')
+    # Configurações do banco de dados MySQL Azure (somente via variáveis de ambiente)
+    DB_HOST = os.environ.get('DB_HOST')
     DB_PORT = int(os.environ.get('DB_PORT', 3306))
-    DB_USER = os.environ.get('DB_USER', 'infra')
-    DB_PASSWORD = os.environ.get('DB_PASSWORD', 'Evoque12@')
-    DB_NAME = os.environ.get('DB_NAME', 'infra')
+    DB_USER = os.environ.get('DB_USER')
+    DB_PASSWORD = os.environ.get('DB_PASSWORD')
+    DB_NAME = os.environ.get('DB_NAME')
 
     # URI de conexão MySQL direta - construída com os valores de ambiente
-    _db_host = os.environ.get('DB_HOST', 'evoque-database.mysql.database.azure.com')
-    _db_user = os.environ.get('DB_USER', 'infra')
-    _db_password = os.environ.get('DB_PASSWORD', 'Evoque12@')
-    _db_name = os.environ.get('DB_NAME', 'infra')
+    _db_host = os.environ.get('DB_HOST')
+    _db_user = os.environ.get('DB_USER')
+    _db_password = os.environ.get('DB_PASSWORD')
+    _db_name = os.environ.get('DB_NAME')
     _db_port = int(os.environ.get('DB_PORT', 3306))
 
-    SQLALCHEMY_DATABASE_URI = (
-        f'mysql+pymysql://{_db_user}:{quote_plus(_db_password)}@{_db_host}:{_db_port}/{_db_name}'
-        '?charset=utf8mb4'
-        '&ssl_disabled=false'
-    )
+    if _db_host and _db_user and _db_password and _db_name:
+        SQLALCHEMY_DATABASE_URI = (
+            f'mysql+pymysql://{_db_user}:{quote_plus(_db_password)}@{_db_host}:{_db_port}/{_db_name}'
+            '?charset=utf8mb4'
+            '&ssl_disabled=false'
+        )
+    else:
+        # Evitar URI inválida quando variáveis não estão definidas
+        SQLALCHEMY_DATABASE_URI = 'sqlite:///dev_database.db'
 
     # Configurações do SQLAlchemy
     SQLALCHEMY_TRACK_MODIFICATIONS = False
@@ -273,10 +277,8 @@ config = {
 }
 
 def get_config():
-    """Retorna a configuração baseada na variável de ambiente FLASK_ENV"""
-    env = os.environ.get('FLASK_ENV', 'development')
-    # Se DB_HOST está definido, usar MySQL, senão usar SQLite
-    if os.environ.get('DB_HOST'):
-        return config.get('dev-mysql', config['dev-mysql'])
-    else:
-        return config.get('dev-sqlite', config['dev-sqlite'])
+    """Retorna a configuração baseada nas variáveis de ambiente de banco"""
+    use_mysql = all(os.environ.get(k) for k in ['DB_HOST', 'DB_USER', 'DB_PASSWORD', 'DB_NAME'])
+    if use_mysql:
+        return config['dev-mysql']
+    return config['dev-sqlite']
