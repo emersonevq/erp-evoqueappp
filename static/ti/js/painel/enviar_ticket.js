@@ -178,25 +178,3 @@ modalTicket.addEventListener('click', function(e) {
         closeTicketModal();
     }
 });
-
-// Atualizar os event listeners dos botões de ticket
-function updateTicketButtons() {
-    document.querySelectorAll('.btn-ticket-sm, #modalSendTicket').forEach(btn => {
-        btn.addEventListener('click', function(e) {
-            e.stopPropagation();
-            const chamadoId = this.dataset.id || currentModalChamadoId;
-            const chamado = chamadosData.find(c => c.id == chamadoId);
-            
-            if (chamado) {
-                openTicketModal(chamado);
-            } else {
-                alert('Erro: Chamado não encontrado');
-            }
-        });
-    });
-}
-
-// Adicionar ao DOMContentLoaded
-document.addEventListener('DOMContentLoaded', function() {
-    updateTicketButtons();
-});
