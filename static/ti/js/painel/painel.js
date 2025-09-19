@@ -793,6 +793,9 @@ function renderChamadosPage(page) {
         </button>
     </div>`;
 
+        // Prefetch on hover/focus
+        card.addEventListener('mouseenter', () => prefetchTimeline(chamado.id));
+        card.addEventListener('focus', () => prefetchTimeline(chamado.id));
         // Clique no card abre modal (exceto elementos interativos)
         card.addEventListener('click', function(e) {
             if (!e.target.closest('.card-footer') && !e.target.closest('.status-badge') && !e.target.closest('button')) {
@@ -993,6 +996,81 @@ const modalStatusSelect = document.getElementById('modalStatus');
 
 let currentModalChamadoId = null;
 
+// Timeline cache e controle de fetch
+const timelineCache = new Map();
+const timelineControllers = new Map();
+
+async function prefetchTimeline(chamadoId) {
+    try {
+        const cached = timelineCache.get(chamadoId) || {};
+        const prev = timelineControllers.get(chamadoId);
+        if (prev) prev.abort();
+        const controller = new AbortController();
+        timelineControllers.set(chamadoId, controller);
+        const headers = { 'Accept': 'application/json' };
+        if (cached.etag) headers['If-None-Match'] = cached.etag;
+        if (cached.lastModified) headers['If-Modified-Since'] = cached.lastModified;
+        const resp = await fetch(`/ti/api/chamados/${chamadoId}/timeline?limit=200`, { headers, signal: controller.signal });
+        if (resp.status === 304 && cached.events) return cached.events;
+        if (resp.ok) {
+            const events = await resp.json();
+            const etag = resp.headers.get('ETag') || cached.etag;
+            const lastModified = resp.headers.get('Last-Modified') || cached.lastModified;
+            timelineCache.set(chamadoId, { events, etag, lastModified });
+            return events;
+        }
+    } catch (e) {
+        if (e.name !== 'AbortError') console.warn('Prefetch timeline falhou:', e);
+    }
+    return null;
+}
+
+(function initTimelineSocket(){
+    try {
+        if (typeof io === 'undefined') return;
+        const socket = io();
+        window.__timelineSocket = socket;
+        socket.on('connect', () => {
+            if (currentModalChamadoId) {
+                socket.emit('subscribe_timeline', { chamado_id: currentModalChamadoId });
+            }
+        });
+        socket.on('timeline_update', (payload) => {
+            const cid = payload?.chamado_id;
+            if (!cid) return;
+            const cached = timelineCache.get(cid);
+            if (cached?.events) {
+                cached.events = [...cached.events, payload];
+                timelineCache.set(cid, cached);
+                if (cid === currentModalChamadoId) {
+                    const timelineList = document.getElementById('timelineList');
+                    if (timelineList) {
+                        const icon = payload.tipo === 'created' ? 'fa-plus-circle' : payload.tipo === 'status_change' ? 'fa-exchange-alt' : payload.tipo?.startsWith('attachment_') ? 'fa-paperclip' : payload.tipo === 'ticket_sent' ? 'fa-envelope' : 'fa-stream';
+                        const when = payload.criado_em ? ` <small class="text-muted">${payload.criado_em}</small>` : '';
+                        const whoName = payload.usuario_nome ? ` <small>(${payload.usuario_nome})</small>` : '';
+                        const li = document.createElement('li');
+                        li.innerHTML = `<i class="fas ${icon} history-icon"></i><span>${whoName} ${payload.tipo}${when}</span>`;
+                        timelineList.appendChild(li);
+                    }
+                }
+            }
+        });
+    } catch(e) { console.warn('Socket timeline indisponível', e); }
+})();
+
+let enviarTicketLoaded = false;
+async function ensureEnviarTicketLoaded() {
+    if (enviarTicketLoaded) return;
+    await new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = '/static/ti/js/painel/enviar_ticket.js';
+        s.async = true;
+        s.onload = () => { enviarTicketLoaded = true; resolve(); };
+        s.onerror = () => reject(new Error('Falha ao carregar enviar_ticket.js'));
+        document.body.appendChild(s);
+    });
+}
+
 // Funções do Modal de Chamados
 async function openModal(chamado) {
     currentModalChamadoId = chamado.id;
@@ -1014,8 +1092,8 @@ async function openModal(chamado) {
     // Histórico na aba: carregar de forma assíncrona
     const timelineList = document.getElementById('timelineList');
     if (timelineList) {
-        // placeholder de carregamento
-        timelineList.innerHTML = '<li><i class="fas fa-spinner fa-spin history-icon"></i><span>Carregando histórico...</span></li>';
+        // placeholder (skeletons)
+        timelineList.innerHTML = Array.from({length: 3}).map(() => '<li class="skeleton-line"><span>&nbsp;</span></li>').join('');
 
         const items = [];
 
@@ -1025,9 +1103,11 @@ async function openModal(chamado) {
         }
 
         try {
-            const tlResp = await fetch(`/ti/api/chamados/${chamado.id}/timeline`, { headers: { 'Accept': 'application/json' } });
-            if (tlResp.ok) {
-                let eventos = await tlResp.json();
+            let eventos = timelineCache.get(chamado.id)?.events;
+            if (!eventos) {
+                eventos = await prefetchTimeline(chamado.id) || [];
+            }
+            if (Array.isArray(eventos)) {
 
                 // Ordenar por data (mais antigo -> mais recente)
                 const parseD = s => Date.parse((s || '').replace(' ', 'T')) || 0;
@@ -1134,7 +1214,7 @@ modalSaveBtn.addEventListener('click', async () => {
     }
 });
 
-modalSendTicketBtn.addEventListener('click', () => {
+modalSendTicketBtn.addEventListener('click', async () => {
     if (!currentModalChamadoId) {
         if (window.advancedNotificationSystem) {
             window.advancedNotificationSystem.showError('Erro', 'Nenhum chamado selecionado.');
@@ -1144,7 +1224,14 @@ modalSendTicketBtn.addEventListener('click', () => {
     
     const chamado = chamadosData.find(c => c.id == currentModalChamadoId);
     if (chamado) {
-        openTicketModal(chamado);
+        try {
+            await ensureEnviarTicketLoaded();
+            openTicketModal(chamado);
+        } catch (e) {
+            if (window.advancedNotificationSystem) {
+                window.advancedNotificationSystem.showError('Erro', e.message);
+            }
+        }
     } else {
         if (window.advancedNotificationSystem) {
             window.advancedNotificationSystem.showError('Erro', 'Chamado não encontrado.');
