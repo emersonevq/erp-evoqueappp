@@ -111,17 +111,24 @@ btnEnviarTicket.addEventListener('click', async function(e) {
     btnEnviarTicket.disabled = true;
     btnEnviarTicket.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enviando...';
 
-    // Fechar modal imediatamente para evitar cliques duplicados
+    // Capturar valores ANTES de fechar/resetar modal
+    const assuntoVal = ticketAssunto.value;
+    const mensagemVal = ticketMensagem.value;
+    const prioridadeVal = ticketPrioridade.checked ? 'true' : 'false';
+    const copiaVal = ticketCopia.checked ? 'true' : 'false';
+    const modeloVal = ticketModelo.value || '';
+    const files = document.getElementById('ticketAnexos')?.files || [];
+
+    // Fechar modal após capturar os valores (evita limpar os campos antes do envio)
     closeTicketModal();
 
     try {
         const formData = new FormData();
-        formData.append('assunto', ticketAssunto.value);
-        formData.append('mensagem', ticketMensagem.value);
-        formData.append('prioridade', ticketPrioridade.checked ? 'true' : 'false');
-        formData.append('enviar_copia', ticketCopia.checked ? 'true' : 'false');
-        formData.append('modelo', ticketModelo.value || '');
-        const files = document.getElementById('ticketAnexos')?.files || [];
+        formData.append('assunto', assuntoVal);
+        formData.append('mensagem', mensagemVal);
+        formData.append('prioridade', prioridadeVal);
+        formData.append('enviar_copia', copiaVal);
+        formData.append('modelo', modeloVal);
         for (let i = 0; i < files.length; i++) {
             formData.append('anexos', files[i]);
         }
