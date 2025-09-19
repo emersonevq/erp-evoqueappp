@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify
+from flask import Blueprint, request, make_response, jsonify
 from flask_login import login_required, current_user
 from auth.auth_helpers import setor_required
 from database import db, Chamado, ChamadoTimelineEvent, AnexoArquivo, User
@@ -11,68 +11,98 @@ timeline_bp = Blueprint('timeline', __name__)
 @setor_required('Administrador')
 def obter_timeline_chamado(id):
     try:
+        from datetime import datetime
+        import hashlib
         chamado = Chamado.query.get_or_404(id)
-        eventos = (
-            ChamadoTimelineEvent.query
-            .filter_by(chamado_id=chamado.id)
-            .order_by(ChamadoTimelineEvent.criado_em.asc())
-            .all()
-        )
+
+        limit = min(int(request.args.get('limit', 100)), 500)
+        since_id = request.args.get('since_id')
+        since = request.args.get('since')
+
+        q = ChamadoTimelineEvent.query.filter_by(chamado_id=chamado.id)
+        if since_id and since_id.isdigit():
+            q = q.filter(ChamadoTimelineEvent.id > int(since_id))
+        elif since:
+            try:
+                try:
+                    dt = datetime.strptime(since, '%d/%m/%Y %H:%M:%S')
+                except ValueError:
+                    dt = datetime.fromisoformat(since.replace('Z',''))
+                q = q.filter(ChamadoTimelineEvent.criado_em > dt)
+            except Exception:
+                pass
+
+        eventos = q.order_by(ChamadoTimelineEvent.criado_em.asc()).limit(limit).all()
+
         resultado = []
+        last_modified = None
+        last_id = 0
         for ev in eventos:
-            # Montar informação do anexo (se houver)
+            if ev.criado_em and (last_modified is None or ev.criado_em > last_modified):
+                last_modified = ev.criado_em
+            if ev.id and ev.id > last_id:
+                last_id = ev.id
+
             anexo_info = None
-            anexo_usuario_id = None
             if ev.anexo_id:
                 anexo = AnexoArquivo.query.get(ev.anexo_id)
                 if anexo:
                     anexo_info = {
                         'id': anexo.id,
                         'nome': anexo.nome_original,
-                        'url': anexo.url_publica() if hasattr(anexo, 'url_publica') else ('/' + anexo.caminho_arquivo if anexo.caminho_arquivo else None),
-                        'tamanho_kb': round((anexo.tamanho_bytes or 0) / 1024)
+                        'url': anexo.url_publica() if hasattr(anexo, 'url_publica') else ('/' + anexo.caminho_arquivo if anexo.caminho_arquivo else None)
                     }
-                    anexo_usuario_id = anexo.usuario_id
 
-            # Determinar autor do evento
-            autor_id = ev.usuario_id or anexo_usuario_id
+            autor_id = ev.usuario_id
             autor_nome = None
             if autor_id:
                 u = User.query.get(autor_id)
                 if u:
                     autor_nome = f"{u.nome} {u.sobrenome}".strip()
 
-            # Classificar tipo do autor (Solicitante x Suporte)
-            autor_tipo = None
-            if autor_id and chamado.usuario_id:
-                autor_tipo = 'Solicitante' if autor_id == chamado.usuario_id else 'Suporte'
-            else:
-                if ev.tipo == 'attachment_received' and not autor_id:
-                    autor_tipo = 'Solicitante'
-                elif ev.tipo in ['attachment_sent', 'ticket_sent'] and not autor_id:
-                    autor_tipo = 'Suporte'
-
             item = {
                 'id': ev.id,
                 'tipo': ev.tipo,
-                'descricao': ev.descricao,
-                'status_anterior': ev.status_anterior,
-                'status_novo': ev.status_novo,
                 'usuario_id': autor_id,
                 'usuario_nome': autor_nome,
-                'autor_tipo': autor_tipo,
-                'criado_em': ev.criado_em.strftime('%d/%m/%Y %H:%M:%S') if ev.criado_em else None,
-                'metadados': None
+                'criado_em': ev.criado_em.strftime('%d/%m/%Y %H:%M:%S') if ev.criado_em else None
             }
-            if ev.metadados:
-                try:
-                    import json as _json
-                    item['metadados'] = _json.loads(ev.metadados)
-                except Exception:
-                    item['metadados'] = None
             if anexo_info:
                 item['anexo'] = anexo_info
             resultado.append(item)
-        return json_response(resultado)
+
+        etag_base = f"{chamado.id}:{last_id}:{len(resultado)}".encode('utf-8')
+        etag = 'W/"' + hashlib.sha1(etag_base).hexdigest() + '"'
+
+        inm = request.headers.get('If-None-Match')
+        ims = request.headers.get('If-Modified-Since')
+
+        if inm == etag:
+            resp = make_response('', 304)
+            resp.headers['ETag'] = etag
+            if last_modified:
+                resp.headers['Last-Modified'] = last_modified.strftime('%a, %d %b %Y %H:%M:%S GMT')
+            resp.headers['Cache-Control'] = 'public, max-age=30, must-revalidate'
+            return resp
+
+        if ims and last_modified:
+            try:
+                from email.utils import parsedate_to_datetime
+                ims_dt = parsedate_to_datetime(ims)
+                if ims_dt and last_modified <= ims_dt:
+                    resp = make_response('', 304)
+                    resp.headers['ETag'] = etag
+                    resp.headers['Last-Modified'] = last_modified.strftime('%a, %d %b %Y %H:%M:%S GMT')
+                    resp.headers['Cache-Control'] = 'public, max-age=30, must-revalidate'
+                    return resp
+            except Exception:
+                pass
+
+        resp = make_response(json_response(resultado))
+        resp.headers['ETag'] = etag
+        if last_modified:
+            resp.headers['Last-Modified'] = last_modified.strftime('%a, %d %b %Y %H:%M:%S GMT')
+        resp.headers['Cache-Control'] = 'public, max-age=30, must-revalidate'
+        return resp
     except Exception as e:
         return error_response('Erro interno no servidor')
