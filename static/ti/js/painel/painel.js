@@ -327,7 +327,7 @@ window.testNavigationTo = function(sectionId) {
     // Verificar se a seção existe
     const targetSection = document.getElementById(sectionId);
     if (!targetSection) {
-        console.error(`Seç��o "${sectionId}" não encontrada!`);
+        console.error(`Seção "${sectionId}" não encontrada!`);
         return false;
     }
 
@@ -2634,91 +2634,6 @@ window.loadSectionContent = loadSectionContent;
 
 // Section initialization is now handled in inicializarSistemaPainel()
 
-// Função para abrir modal de ticket
-function openTicketModal(chamado) {
-    document.getElementById('ticketChamadoId').value = chamado.id;
-    document.getElementById('ticketAssunto').value = `Atualização do Chamado ${chamado.codigo}`;
-    document.getElementById('ticketMensagem').value = '';
-    document.getElementById('modalTicket').classList.add('active');
-}
-
-// Event listeners para modal de ticket
-document.getElementById('modalTicketClose')?.addEventListener('click', () => {
-    document.getElementById('modalTicket').classList.remove('active');
-});
-
-document.getElementById('btnCancelarTicket')?.addEventListener('click', () => {
-    document.getElementById('modalTicket').classList.remove('active');
-});
-
-document.getElementById('btnEnviarTicket')?.addEventListener('click', async () => {
-    const chamadoId = document.getElementById('ticketChamadoId').value;
-    const assunto = document.getElementById('ticketAssunto').value;
-    const mensagem = document.getElementById('ticketMensagem').value;
-    const prioridade = document.getElementById('ticketPrioridade').checked;
-    const enviarCopia = document.getElementById('ticketCopia').checked;
-
-    if (!mensagem.trim()) {
-        if (window.advancedNotificationSystem) {
-            window.advancedNotificationSystem.showError('Erro', 'A mensagem é obrigatória');
-        }
-        return;
-    }
-
-    try {
-        const fd = new FormData();
-        fd.append('assunto', assunto);
-        fd.append('mensagem', mensagem);
-        fd.append('prioridade', prioridade ? 'true' : 'false');
-        fd.append('enviar_copia', enviarCopia ? 'true' : 'false');
-        const fileInput = document.getElementById('ticketAnexos');
-        if (fileInput && fileInput.files) {
-            Array.from(fileInput.files).forEach(f => fd.append('anexos', f));
-        }
-
-        const response = await fetch(`/ti/painel/api/chamados/${chamadoId}/ticket`, {
-            method: 'POST',
-            body: fd
-        });
-
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Erro ao enviar ticket');
-        }
-
-        document.getElementById('modalTicket').classList.remove('active');
-        if (window.advancedNotificationSystem) {
-            window.advancedNotificationSystem.showSuccess('Ticket Enviado', 'Ticket enviado com sucesso!');
-        }
-        // Recarregar lista e atualizar modal aberto
-        await loadChamados();
-        const ch = chamadosData.find(c => c.id == chamadoId);
-        if (ch) {
-            openModal(ch); // reabrir modal com timeline atualizada
-        }
-    } catch (error) {
-        console.error('Erro ao enviar ticket:', error);
-        if (window.advancedNotificationSystem) {
-            window.advancedNotificationSystem.showError('Erro', `Erro: ${error.message}`);
-        }
-    }
-});
-
-// Event listeners para modelos de ticket
-document.getElementById('ticketModelo')?.addEventListener('change', function() {
-    const modelo = this.value;
-    const mensagemField = document.getElementById('ticketMensagem');
-    
-    const modelos = {
-        'atualizacao': 'Prezado(a) cliente,\n\nInformamos que o status do seu chamado foi atualizado.\n\nAtenciosamente,\nEquipe de Suporte',
-        'confirmacao': 'Prezado(a) cliente,\n\nConfirmamos o recebimento do seu chamado e nossa equipe já está trabalhando na solução.\n\nAtenciosamente,\nEquipe de Suporte',
-        'conclusao': 'Prezado(a) cliente,\n\nSeu chamado foi concluído com sucesso. Caso tenha alguma dúvida, entre em contato conosco.\n\nAtenciosamente,\nEquipe de Suporte'
-    };
-    
-    if (modelo && modelos[modelo]) {
-        mensagemField.value = modelos[modelo];
-    }
-});
 
 // Event listeners para fechar modais
 document.querySelectorAll('.modal-close').forEach(btn => {
