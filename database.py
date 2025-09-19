@@ -1,4 +1,6 @@
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import Index, event
+from flask import current_app
 from flask_login import UserMixin
 from datetime import datetime, date
 import json
@@ -150,6 +152,9 @@ class User(db.Model, UserMixin):
         return check_password_hash(self.senha_hash, password)
 
 class Chamado(db.Model):
+    __table_args__ = (
+        Index('ix_chamado_status', 'status'),
+    )
     id = db.Column(db.Integer, primary_key=True)
     codigo = db.Column(db.String(20), unique=True, nullable=False)
     protocolo = db.Column(db.String(20), unique=True, nullable=False)
@@ -302,6 +307,9 @@ class AnexoArquivo(db.Model):
 
 class HistoricoTicket(db.Model):
     __tablename__ = 'historicos_tickets'
+    __table_args__ = (
+        Index('ix_historicos_tickets_chamado_id', 'chamado_id'),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
     chamado_id = db.Column(db.Integer, db.ForeignKey('chamado.id'), nullable=False)
@@ -319,6 +327,10 @@ class HistoricoTicket(db.Model):
 
 class ChamadoTimelineEvent(db.Model):
     __tablename__ = 'chamado_timeline'
+    __table_args__ = (
+        Index('ix_chamado_timeline_chamado_id', 'chamado_id'),
+        Index('ix_chamado_timeline_criado_em', 'criado_em'),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
     chamado_id = db.Column(db.Integer, db.ForeignKey('chamado.id'), nullable=False)
@@ -336,6 +348,25 @@ class ChamadoTimelineEvent(db.Model):
 
     def __repr__(self):
         return f'<ChamadoTimelineEvent {self.tipo} - Chamado {self.chamado_id}>'
+
+# Emitir atualização via Socket.IO após inserir evento na timeline
+@event.listens_for(ChamadoTimelineEvent, 'after_insert')
+def _emit_timeline_update(mapper, connection, target):
+    try:
+        sock = getattr(current_app, 'socketio', None)
+        if not sock:
+            return
+        payload = {
+            'id': target.id,
+            'chamado_id': target.chamado_id,
+            'tipo': target.tipo,
+            'usuario_id': target.usuario_id,
+            'criado_em': target.criado_em.strftime('%d/%m/%Y %H:%M:%S') if target.criado_em else None
+        }
+        room = f"timeline:{target.chamado_id}"
+        sock.emit('timeline_update', payload, to=room)
+    except Exception:
+        pass
 
 class Configuracao(db.Model):
     __tablename__ = 'configuracoes'
@@ -912,7 +943,7 @@ class SessaoAtiva(db.Model):
     ultima_atividade = db.Column(db.DateTime, default=lambda: get_brazil_time().replace(tzinfo=None))
     ativo = db.Column(db.Boolean, default=True)
 
-    # Informações de localização
+    # Informações de localiza��ão
     pais = db.Column(db.String(100), nullable=True)
     cidade = db.Column(db.String(100), nullable=True)
     navegador = db.Column(db.String(100), nullable=True)
