@@ -9,3 +9,4 @@ email-validator==2.0.0.post2
 Flask-SocketIO
 pytz
 PyMySQL
+sentry-sdk
