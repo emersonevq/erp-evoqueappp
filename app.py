@@ -16,13 +16,17 @@ from setores.comercial.routes import comercial
 from setores.outros.routes import outros_bp
 from flask_login import LoginManager, login_required, current_user
 from datetime import timedelta, datetime
-from flask_socketio import SocketIO, emit
+from flask_socketio import SocketIO, emit, join_room, leave_room
 import json
 
 # IMPORTAÇÕES DE SEGURANÇA
 from security.middleware import SecurityMiddleware
 from security.session_security import SessionSecurity
 from security.security_config import SecurityConfig
+
+import sentry_sdk
+from sentry_sdk.integrations.flask import FlaskIntegration
+from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
 
 app = Flask(
     __name__,
@@ -49,6 +53,23 @@ socketio = SocketIO(
     ping_interval=25,
     transports=['polling', 'websocket']
 )
+
+# Sentry (Performance/Tracing) - habilitado se SENTRY_DSN estiver configurado
+try:
+    dsn = os.environ.get('SENTRY_DSN')
+    if dsn:
+        sentry_sdk.init(
+            dsn=dsn,
+            integrations=[FlaskIntegration(), SqlalchemyIntegration()],
+            traces_sample_rate=float(os.environ.get('SENTRY_TRACES_SAMPLE_RATE', '0.2')),
+            profiles_sample_rate=float(os.environ.get('SENTRY_PROFILES_SAMPLE_RATE', '0.1')),
+            environment=app.config.get('FLASK_ENV', 'development')
+        )
+        print('✅ Sentry habilitado (tracing de performance ativo)')
+    else:
+        print('ℹ️  Sentry não configurado (defina SENTRY_DSN para habilitar)')
+except Exception as _e:
+    print(f'⚠️  Falha ao inicializar Sentry: {_e}')
 
 # INICIALIZAR MIDDLEWARE DE SEGURANÇA
 security_middleware = SecurityMiddleware(app)
@@ -281,6 +302,26 @@ def handle_join_admin(data):
         'status': 'success',
         'timestamp': datetime.now().isoformat()
     })
+
+@socketio.on('subscribe_timeline')
+def handle_subscribe_timeline(data):
+    try:
+        chamado_id = data.get('chamado_id')
+        if chamado_id:
+            join_room(f"timeline:{chamado_id}")
+            emit('subscribed_timeline', {'chamado_id': chamado_id, 'status': 'ok'})
+    except Exception as e:
+        emit('subscribed_timeline', {'error': str(e)})
+
+@socketio.on('unsubscribe_timeline')
+def handle_unsubscribe_timeline(data):
+    try:
+        chamado_id = data.get('chamado_id')
+        if chamado_id:
+            leave_room(f"timeline:{chamado_id}")
+            emit('unsubscribed_timeline', {'chamado_id': chamado_id, 'status': 'ok'})
+    except Exception as e:
+        emit('unsubscribed_timeline', {'error': str(e)})
 
 @socketio.on('test_notification')
 def handle_test_notification():
