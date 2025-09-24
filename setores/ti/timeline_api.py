@@ -55,16 +55,48 @@ def obter_timeline_chamado(id):
 
             autor_id = ev.usuario_id
             autor_nome = None
+            autor_tipo = None
             if autor_id:
                 u = User.query.get(autor_id)
                 if u:
                     autor_nome = f"{u.nome} {u.sobrenome}".strip()
+                    try:
+                        if hasattr(u, 'eh_agente_suporte_ativo') and u.eh_agente_suporte_ativo():
+                            autor_tipo = 'Suporte'
+                        elif u.nivel_acesso in ['Administrador', 'Gerente', 'Gerente Regional', 'Gestor']:
+                            autor_tipo = 'Suporte'
+                        else:
+                            autor_tipo = 'Solicitante'
+                    except Exception:
+                        autor_tipo = 'Solicitante'
+            # Fallback por tipo de evento
+            if not autor_tipo:
+                if ev.tipo in ['attachment_sent', 'ticket_sent', 'status_change']:
+                    autor_tipo = 'Suporte'
+                elif ev.tipo in ['attachment_received', 'created']:
+                    autor_tipo = 'Solicitante'
+                else:
+                    autor_tipo = 'Sistema'
+
+            # Tentar parsear metadados como JSON quando aplicável
+            metadados_val = None
+            if ev.metadados:
+                try:
+                    import json as _json
+                    metadados_val = _json.loads(ev.metadados)
+                except Exception:
+                    metadados_val = ev.metadados
 
             item = {
                 'id': ev.id,
                 'tipo': ev.tipo,
                 'usuario_id': autor_id,
                 'usuario_nome': autor_nome,
+                'autor_tipo': autor_tipo,
+                'descricao': ev.descricao,
+                'status_anterior': ev.status_anterior,
+                'status_novo': ev.status_novo,
+                'metadados': metadados_val,
                 'criado_em': ev.criado_em.strftime('%d/%m/%Y %H:%M:%S') if ev.criado_em else None
             }
             if anexo_info:
