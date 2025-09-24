@@ -200,6 +200,23 @@
       height: calc(1em * var(--scale-factor));
       filter: invert(1) !important; /* Ícone branco para melhor contraste */
     }
+    /* Desktop adjustments: keep full-viewport background but constrain card */
+    @media (min-width: 992px) {
+      body {
+        padding: calc(15px * var(--scale-factor));
+      }
+      .login-container {
+        width: 100%;
+        max-width: calc(520px * var(--scale-factor));
+        height: auto;
+        min-height: 100vh;
+        padding: calc(15px * var(--scale-factor));
+      }
+      .card {
+        height: auto;
+        max-height: none;
+      }
+    }
   </style>
 </head>
 <body>
