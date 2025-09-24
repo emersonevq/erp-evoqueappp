@@ -1046,10 +1046,23 @@ async function prefetchTimeline(chamadoId) {
                     const timelineList = document.getElementById('timelineList');
                     if (timelineList) {
                         const icon = payload.tipo === 'created' ? 'fa-plus-circle' : payload.tipo === 'status_change' ? 'fa-exchange-alt' : payload.tipo?.startsWith('attachment_') ? 'fa-paperclip' : payload.tipo === 'ticket_sent' ? 'fa-envelope' : 'fa-stream';
-                        const when = payload.criado_em ? ` <small class="text-muted">${payload.criado_em}</small>` : '';
-                        const whoName = payload.usuario_nome ? ` <small>(${payload.usuario_nome})</small>` : '';
+                        const when = payload.criado_em ? `<span class="timestamp">${payload.criado_em}</span>` : '';
+                        const whoName = payload.usuario_nome ? `<span class="sender-name">${payload.usuario_nome}</span>` : '<span class="sender-name">Sistema</span>';
+                        const senderType = payload.autor_tipo || (payload.tipo === 'attachment_received' ? 'Solicitante' : (payload.tipo === 'attachment_sent' || payload.tipo === 'ticket_sent' || payload.tipo === 'status_change') ? 'Suporte' : 'Sistema');
+                        const badge = `<span class="sender-badge ${senderType==='Suporte' ? 'badge-suporte' : senderType==='Solicitante' ? 'badge-solicitante' : 'badge-sistema'}">${senderType}</span>`;
                         const li = document.createElement('li');
-                        li.innerHTML = `<i class="fas ${icon} history-icon"></i><span>${whoName} ${payload.tipo}${when}</span>`;
+                        li.className = `timeline-item ${senderType==='Suporte' ? 'from-suporte' : senderType==='Solicitante' ? 'from-solicitante' : 'from-sistema'}`;
+                        li.innerHTML = `
+                          <div class="timeline-header">
+                            ${badge}
+                            ${whoName}
+                            <span class="spacer"></span>
+                            ${when}
+                          </div>
+                          <div class="timeline-body">
+                            <i class="fas ${icon} history-icon"></i>
+                            <span>${payload.tipo}</span>
+                          </div>`;
                         timelineList.appendChild(li);
                     }
                 }
@@ -1135,9 +1148,10 @@ async function openModal(chamado) {
                     else if (ev.tipo === 'attachment_sent') icon = 'fa-paperclip';
                     else if (ev.tipo === 'ticket_sent') icon = 'fa-envelope';
 
-                    const whoBadge = ev.autor_tipo ? `<span class="badge ${ev.autor_tipo==='Suporte' ? 'bg-info' : 'bg-secondary'}">${ev.autor_tipo}</span>` : '';
-                    const whoName = ev.usuario_nome ? ` <small>(${ev.usuario_nome})</small>` : '';
-                    const when = ev.criado_em ? ` <small class="text-muted">${ev.criado_em}</small>` : '';
+                    const senderType = ev.autor_tipo || (ev.tipo === 'attachment_received' ? 'Solicitante' : (ev.tipo === 'attachment_sent' || ev.tipo === 'ticket_sent' || ev.tipo === 'status_change') ? 'Suporte' : 'Sistema');
+                    const whoBadge = `<span class="sender-badge ${senderType==='Suporte' ? 'badge-suporte' : senderType==='Solicitante' ? 'badge-solicitante' : 'badge-sistema'}">${senderType}</span>`;
+                    const whoName = `<span class="sender-name">${ev.usuario_nome || 'Sistema'}</span>`;
+                    const when = ev.criado_em ? `<span class="timestamp">${ev.criado_em}</span>` : '';
                     const anexoHtml = ev.anexo ? ` <a href="${ev.anexo.url}" target="_blank" rel="noopener">${fileNameFrom(ev.anexo.url, ev.anexo.nome)}</a>` : '';
 
                     let extra = '';
@@ -1148,7 +1162,19 @@ async function openModal(chamado) {
                         extra = `${assunto}${msg}`;
                     }
 
-                    items.push(`<li><i class="fas ${icon} history-icon"></i><span>${whoBadge}${whoName} ${label}${anexoHtml}${when}${extra ? '<div class="mt-1">'+extra+'</div>' : ''}</span></li>`);
+                    items.push(`
+                        <li class="timeline-item ${senderType==='Suporte' ? 'from-suporte' : senderType==='Solicitante' ? 'from-solicitante' : 'from-sistema'}">
+                          <div class="timeline-header">
+                            ${whoBadge}
+                            ${whoName}
+                            <span class="spacer"></span>
+                            ${when}
+                          </div>
+                          <div class="timeline-body">
+                            <i class="fas ${icon} history-icon"></i>
+                            <span>${label}${anexoHtml}${extra ? '<div class="mt-1">'+extra+'</div>' : ''}</span>
+                          </div>
+                        </li>`);
                 });
             }
         } catch (e) {
@@ -1893,7 +1919,7 @@ function renderUsuariosPagination(totalItems) {
 
 // Função para anexar event listeners aos cards de usuários
 function attachUsuariosEventListeners() {
-    // Listener para botão Editar
+    // Listener para bot��o Editar
     document.querySelectorAll('.btn-editar').forEach(btn => {
         btn.addEventListener('click', function() {
             const usuarioId = this.dataset.id;
@@ -3912,7 +3938,7 @@ function renderizarPaginacaoUsuarios(pagination) {
             <ul class="pagination justify-content-center">
     `;
 
-    // Botão anterior
+    // Bot��o anterior
     if (pagination.has_prev) {
         paginationHTML += `
             <li class="page-item">
