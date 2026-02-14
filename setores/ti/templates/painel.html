@@ -25,6 +25,30 @@
     .history-list { list-style: none; padding: 0; margin: 0; }
     .history-list li { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
     .history-icon { color: var(--primary-color); }
+
+    /* Timeline improvements */
+    .history-list .timeline-item {
+      display: block;
+      background: rgba(255, 255, 255, 0.04);
+      border-radius: 8px;
+      padding: 10px 12px;
+      border-left: 3px solid transparent;
+    }
+    .history-list .timeline-item + .timeline-item { margin-top: 8px; }
+    .history-list .timeline-item.from-suporte { border-left-color: var(--primary-color); }
+    .history-list .timeline-item.from-solicitante { border-left-color: var(--accent-color); }
+    .history-list .timeline-item.from-sistema { border-left-color: rgba(255,255,255,0.25); }
+
+    .timeline-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .timeline-header .spacer { flex: 1; }
+    .sender-badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 0.8rem; }
+    .badge-suporte { background: var(--primary-color); color: #fff; }
+    .badge-solicitante { background: var(--accent-color); color: #1C2526; }
+    .badge-sistema { background: rgba(255,255,255,0.2); color: var(--light-color); }
+    .sender-name { opacity: 0.95; }
+    .timestamp { color: rgba(255,255,255,0.65); font-size: 0.85rem; }
+
+    .timeline-body { display: flex; gap: 8px; align-items: flex-start; word-break: break-word; }
     @keyframes pulse {
       0% {
         transform: scale(1);
@@ -946,7 +970,7 @@
                 </tr>
               </thead>
               <tbody id="tabelaLogsAcesso">
-                <!-- Dados serão carregados dinamicamente -->
+                <!-- Dados ser��o carregados dinamicamente -->
               </tbody>
             </table>
           </div>

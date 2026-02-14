@@ -37,17 +37,20 @@
       align-items: center;
       justify-content: center;
       color: var(--light-color);
-      padding: calc(15px * var(--scale-factor));
+      padding: 0;
     }
-    
+
     .login-container {
-      width: 100%;
-      max-width: calc(450px * var(--scale-factor));
-      padding: calc(15px * var(--scale-factor));
-      transform: scale(var(--scale-factor));
-      transform-origin: center;
+      width: 100vw;
+      height: 100vh;
+      max-width: 100vw;
+      max-height: 100vh;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
-    
+
     .card {
       background-color: var(--dark-color);
       border: none;
@@ -55,6 +58,7 @@
       box-shadow: 0 calc(5px * var(--scale-factor)) calc(15px * var(--scale-factor)) rgba(0, 0, 0, 0.2);
       overflow: hidden;
       width: 100%;
+      height: 100%;
     }
     
     .card::before {
@@ -196,6 +200,23 @@
       height: calc(1em * var(--scale-factor));
       filter: invert(1) !important; /* Ícone branco para melhor contraste */
     }
+    /* Desktop adjustments: keep full-viewport background but constrain card */
+    @media (min-width: 992px) {
+      body {
+        padding: calc(15px * var(--scale-factor));
+      }
+      .login-container {
+        width: 100%;
+        max-width: calc(520px * var(--scale-factor));
+        height: auto;
+        min-height: 100vh;
+        padding: calc(15px * var(--scale-factor));
+      }
+      .card {
+        height: auto;
+        max-height: none;
+      }
+    }
   </style>
 </head>
 <body>
@@ -207,7 +228,7 @@
           <img src="https://images.totalpass.com/public/1280x720/czM6Ly90cC1pbWFnZS1hZG1pbi1wcm9kL2d5bXMvNHVrOWtkOGd3M2xlMXg4OGNzdzViN2NhdmUzY2hhNWV3Y2lyd2pyNmI4djl6aXdiNTV2YXg3bjJ2aDI2" 
                alt="Evoque Fitness Logo" 
                class="img-fluid logo">
-          <h3 class="h4 mb-3">Painel administrativo</h3>
+          <h3 class="h4 mb-3">Bem vindo, faça login</h3>
         </div>
 
         <!-- Mensagens Flash -->
